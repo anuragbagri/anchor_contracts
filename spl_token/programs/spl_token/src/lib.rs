@@ -2,12 +2,15 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint , MintTo , Token};
 use anchor_lang::accounts::program;
 use anchor_spl::{associated_token::AssociatedToken, token::{self, InitializeMint}, token_interface::spl_token_metadata_interface::instruction::Initialize};
+use mpl_token_metadata::instruction as mpl_instruction;
 
 
 
 declare_id!("")
 #[program]
 pub mod create_mint_anchor {
+        use anchor_lang::solana_program::loader_v4::is_finalize_instruction;
+
         use super::*;
 
     pub fn create_mint_metadata_and_mint_to(
@@ -25,11 +28,67 @@ pub mod create_mint_anchor {
 
      let cpi_token_program = ctx.accounts.token_program.to_account_info();
 
+
      let cpi_context = CpiContext::new(cpi_token_program, cpi_account);
 
      token::initialize_mint(cpi_context, decimals, &ctx.accounts.mint_authority.key(), Some(&ctx.accounts.mint_authority.key()))?;
 
      
+
+     // meatadata account via cpi 
+     let metadata_instruction = mpl_instruction::create_metadata_account_v3(
+        ctx.accounts.token_metadata_program.key(),
+        ctx.accounts.metadata.key(),
+        ctx.accounts.mint.key(),
+        ctx.accounts.mint_authority.key(),
+        ctx.accounts.payer.key(),
+        ctx.accounts.mint_authority.key(),
+        name,
+        symbol,
+        uri,
+        None,
+        0,
+        true,
+        false,
+        None,
+        None,
+        None
+     );
+
+
+
+     // user ata 
+     let ata_cpi_accounts = anchor_spl::associated_token::Create {
+        payer : ctx.accounts.signer.to_account_info(),
+        associated_token : ctx.accounts.user_ata.to_account_info(),
+        authority : ctx.accounts.mint_authority.to_account_info(),
+        mint : ctx.accounts.mint.to_account_info(),
+        system_program : ctx.accounts.system_program.to_account_info(),
+        token_program : ctx.accounts.token_program.to_account_info(),
+        rent : ctx.accounts.rent.to_account_info(),
+     };
+    
+    let ata_cpi_prorgam = ctx.accounts.associated_token_program.to_account_info();
+
+
+    let ata_cpi_context = CpiContext::new(ata_cpi_prorgam, ata_cpi_accounts);
+
+    anchor_spl::associated_token::create(ata_cpi_context)?;
+
+
+    // mint tokens to user Ata
+    let transfer_cpi_accounts = MintTo {
+        mint : ctx.accounts.mint.to_account_info(),
+        to : ctx.accounts.user_ata.to_account_info(),
+        authority : ctx.accounts.mint_authority.to_account_info(),
+    };
+
+    let cpi_token_program = ctx.accounts.token_program.to_account_info();
+
+    let cpi_transfer_context = CpiContext::new(cpi_token_program, transfer_cpi_accounts);
+
+    token::mint_to(cpi_transfer_context, amount)?;
+
      Ok(())
      
     }
@@ -40,7 +99,7 @@ pub mod create_mint_anchor {
         #[account(mut)]
         pub signer : Signer<'info>,
 
-        // mint account initialized on-chain 
+        // mint account initialized on-chain ..lmaports and rent handled by anchor account struct 
         #[account(
             init,
             payer= signer,
