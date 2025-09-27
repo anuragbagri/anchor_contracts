@@ -18,11 +18,19 @@ pub mod create_mint_anchor {
         symbol : String,
         uri : String
     ) -> Result<()> {
-     let cpi_account = InitializeMint {
+     let cpi_account = token::InitializeMint {
         mint : ctx.accounts.mint.to_account_info(),
         rent : ctx.accounts.rent.to_account_info(),
      };
+
+     let cpi_token_program = ctx.accounts.token_program.to_account_info();
+
+     let cpi_context = CpiContext::new(cpi_token_program, cpi_account);
+
+     token::initialize_mint(cpi_context, decimals, &ctx.accounts.mint_authority.key(), Some(&ctx.accounts.mint_authority.key()))?;
+
      
+     Ok(())
      
     }
 
