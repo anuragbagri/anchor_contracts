@@ -1,15 +1,15 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint , MintTo , Token};
 use anchor_lang::accounts::program;
-use anchor_spl::{associated_token::AssociatedToken, token::{self, InitializeMint}, token_interface::spl_token_metadata_interface::instruction::Initialize};
-use mpl_token_metadata::instruction as mpl_instruction;
+use anchor_spl::{associated_token::AssociatedToken, token::{self, InitializeMint}};
 
 
 
 declare_id!("")
 #[program]
 pub mod create_mint_anchor {
-        use anchor_lang::solana_program::loader_v4::is_finalize_instruction;
+        use anchor_spl::metadata::{create_metadata_accounts_v3, CreateMetadataAccountsV3};
+        use mpl_token_metadata::{instructions::CreateMetadataAccountV3, types::DataV2};
 
         use super::*;
 
@@ -36,27 +36,28 @@ pub mod create_mint_anchor {
      
 
      // meatadata account via cpi 
-     let metadata_instruction = mpl_instruction::create_metadata_account_v3(
-        ctx.accounts.token_metadata_program.key(),
-        ctx.accounts.metadata.key(),
-        ctx.accounts.mint.key(),
-        ctx.accounts.mint_authority.key(),
-        ctx.accounts.payer.key(),
-        ctx.accounts.mint_authority.key(),
-        name,
-        symbol,
-        uri,
-        None,
-        0,
-        true,
-        false,
-        None,
-        None,
-        None
-     );
+     let token_metadata_data = DataV2 {
+        name : name,
+        symbol : symbol,
+        uri : uri,
+        seller_fee_basis_points : 0 ,
+        creators : None,
+        collection : None,
+        uses : None,
+     };
 
 
+    let metadata_cpi_context = CpiContext::new_with_signer(ctx.accounts.token_metadata_program.to_account_info(), CreateMetadataAccountsV3 {
+        metadata : ctx.accounts.metadata.to_account_info(),
+        mint : ctx.accounts.mint.to_account_info(),
+        mint_authority : ctx.accounts.mint_authority.to_account_info(),
+        payer : ctx.accounts.signer.to_account_info(),
+        update_authority : Some(ctx.accounts.mint_authority.to_account_info()),
+        system_program : ctx.accounts.system_program.to_account_info(),
+        rent : ctx.accounts.rent.to_account_info()
+    } , &[b"metadata_account"]);
 
+    create_metadata_accounts_v3(metadata_cpi_context, token_metadata_data, false, true, None)?;
      // user ata 
      let ata_cpi_accounts = anchor_spl::associated_token::Create {
         payer : ctx.accounts.signer.to_account_info(),
